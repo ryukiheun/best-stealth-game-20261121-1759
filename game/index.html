@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Moss &amp; Shadow — a stealth game</title>
+<link rel="icon" href="data:,">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+<style>
+  html, body { margin: 0; padding: 0; background: #060f1f; height: 100%; overflow: hidden; }
+  #scene { position: fixed; inset: 0; }
+  #scene canvas { display: block; cursor: crosshair; }
+  .serif { font-family: Georgia, 'Times New Roman', serif; }
+  /* ---- HUD ---- */
+  #hud { position: fixed; inset: 0; pointer-events: none; display: none; z-index: 5; }
+  #topbar { position: absolute; top: 0; left: 0; right: 0; height: 52px;
+    background: rgba(6, 14, 26, 0.78); text-align: center; color: #efe6cf; }
+  #topbar .title { font-size: 26px; font-weight: bold; line-height: 30px; letter-spacing: 2px; }
+  #topbar .level { font-size: 14px; font-weight: bold; color: #b8f5d0; line-height: 18px; }
+  .panel { position: absolute; background: rgba(6, 14, 26, 0.72); border: 1px solid rgba(239, 230, 207, 0.35);
+    border-radius: 8px; color: #efe6cf; padding: 6px 12px; }
+  #orbs-panel { top: 62px; left: 16px; font-size: 17px; font-weight: bold; color: #ffe98a; }
+  #time-panel { top: 102px; left: 16px; font-size: 15px; font-weight: bold; color: #cfe0ff; }
+  #stealth-panel { bottom: 16px; left: 16px; width: 186px; }
+  #stealth-panel .mode { font-size: 16px; font-weight: bold; color: #b8f5d0; }
+  #stealth-panel .hint { font-size: 13px; color: #cfe0ff; }
+  #pebbles { position: absolute; bottom: 16px; left: 240px; color: #efe6cf; }
+  #pebbles .label { font-size: 13px; font-weight: bold; margin-bottom: 4px; }
+  #pebble-slots { display: flex; gap: 6px; }
+  .slot { width: 40px; height: 40px; background: rgba(6, 14, 26, 0.72);
+    border: 1px solid rgba(239, 230, 207, 0.5); border-radius: 6px;
+    display: flex; align-items: center; justify-content: center; font-size: 22px; color: #efe6cf; }
+  .slot.empty { color: rgba(239, 230, 207, 0.25); }
+  #danger-panel { bottom: 16px; right: 16px; width: 226px; text-align: left; }
+  #danger-panel .label { font-size: 14px; font-weight: bold; }
+  #danger-panel .status { font-size: 16px; font-weight: bold; }
+  #danger-bar { height: 10px; background: rgba(255,255,255,0.18); border-radius: 5px; margin-top: 5px; overflow: hidden; }
+  #danger-fill { height: 100%; width: 0%; background: #b8f5d0; border-radius: 5px; }
+  #minimap-wrap { position: absolute; top: 62px; right: 16px; width: 176px;
+    background: rgba(6, 14, 26, 0.72); border: 1px solid rgba(239, 230, 207, 0.35);
+    border-radius: 8px; padding: 4px 0 6px; text-align: center; }
+  #minimap-wrap .label { color: #efe6cf; font-size: 13px; font-weight: bold; }
+  #minimap { display: block; margin: 2px auto 0; }
+  #hint-line { position: absolute; bottom: 4px; left: 0; right: 0; text-align: center;
+    color: rgba(239, 230, 207, 0.9); font-size: 15px; }
+  /* ---- Full screens ---- */
+  .screen { position: fixed; inset: 0; display: none; z-index: 10; text-align: center;
+    color: #efe6cf; }
+  .screen .shade { position: absolute; inset: 0; background: rgba(4, 10, 18, 0.55); }
+  .screen .inner { position: relative; z-index: 1; padding-top: 110px; }
+  .screen h1 { font-size: 84px; margin: 0; color: #d8f7e3;
+    text-shadow: 0 0 24px rgba(143, 245, 189, 0.8); letter-spacing: 2px; }
+  .screen h1.small { font-size: 54px; }
+  .screen h1.red { color: #ff6b6b; text-shadow: 0 0 24px rgba(255, 77, 77, 0.8); }
+  .screen h1.gold { color: #ffe98a; text-shadow: 0 0 24px rgba(255, 215, 106, 0.8); }
+  .screen .sub { font-size: 22px; font-style: italic; color: #d8f7e3; margin-top: 10px; }
+  .screen .press { font-size: 28px; font-weight: bold; margin-top: 56px; color: #ffe98a;
+    text-shadow: 0 0 18px rgba(255, 215, 106, 0.9), 0 2px 6px rgba(0, 0, 0, 0.8); }
+  .screen .menu { font-size: 20px; font-weight: bold; margin-top: 34px; line-height: 2.3; color: #e8f0ff; }
+  .screen .menu .sel { color: #ffe98a; text-shadow: 0 0 12px rgba(255, 215, 106, 0.8); }
+  /* Title menu scrim (N-d): a dark pill behind the menu block, the
+     subtitle and the footer line, so the text never sits on busy
+     bamboo, stones or the red torii pillars (N-6). */
+  #screen-start .menu, #screen-start .foot, #screen-start .sub {
+    display: inline-block; background: rgba(4, 10, 18, 0.6);
+    border-radius: 10px; padding: 4px 24px; }
+  #screen-start .menu { padding-top: 2px; padding-bottom: 2px; }
+  #screen-start .sub { margin-top: 16px; }
+  /* Victory stats sit higher so they clear the torii's top beam (N-e). */
+  #screen-victory .inner { padding-top: 118px; }
+  #screen-victory .stats { margin-top: 18px; }
+  .screen .foot { font-size: 14px; color: rgba(207, 224, 255, 0.7); margin-top: 30px; }
+  .screen .card { display: inline-block; background: rgba(6, 14, 26, 0.78);
+    border: 1px solid rgba(239, 230, 207, 0.35); border-radius: 10px;
+    padding: 26px 44px; margin-top: 20px; text-align: left; font-size: 18px; line-height: 1.9; }
+  .screen .stats { font-size: 22px; margin-top: 26px; }
+  .screen .go { font-size: 24px; font-weight: bold; color: #b8f5d0; margin-top: 34px; }
+  /* Victory / level-complete: the "go" line sits at the bottom so it can
+     never cross the torii gate or the EXIT sign (M9). */
+  #screen-victory .inner, #screen-levelcomplete .inner { height: 100%; box-sizing: border-box; }
+  #screen-victory .go, #screen-levelcomplete .go {
+    position: absolute; bottom: 30px; left: 0; right: 0; margin-top: 0;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9); }
+</style>
+</head>
+<body>
+<div id="scene"></div>
+
+<div id="hud" class="serif">
+  <div id="topbar">
+    <div class="title">MOSS &amp; SHADOW</div>
+    <div class="level" id="hud-level">LEVEL 1 OF 3</div>
+  </div>
+  <div class="panel" id="orbs-panel">ORBS COLLECTED: 0 / 3</div>
+  <div class="panel" id="time-panel">TIME 0:00</div>
+  <div class="panel" id="stealth-panel">
+    <div class="mode" id="stealth-mode">SNEAK: OFF</div>
+    <div class="hint">Hold Shift to sneak</div>
+  </div>
+  <div id="pebbles">
+    <div class="label">CLICK TO THROW PEBBLE</div>
+    <div id="pebble-slots"></div>
+  </div>
+  <div class="panel" id="danger-panel">
+    <div class="label">DANGER METER</div>
+    <div class="status" id="danger-status">STATUS: PATROL</div>
+    <div id="danger-bar"><div id="danger-fill"></div></div>
+  </div>
+  <div id="minimap-wrap"><div class="label">MINI-MAP</div><canvas id="minimap" width="176" height="100"></canvas></div>
+  <div id="hint-line">WASD to move &nbsp;•&nbsp; Shift to sneak &nbsp;•&nbsp; Click to throw a pebble</div>
+</div>
+
+<div class="screen serif" id="screen-start">
+  <div class="shade" style="background:rgba(4,10,18,0.18)"></div>
+  <div class="inner">
+    <h1>MOSS &amp; SHADOW</h1>
+    <div class="sub">A fox spirit slips through the moonlit shrine garden</div>
+    <div class="press" id="press-space">PRESS SPACE TO ENTER THE SHADOWS</div>
+    <div class="menu" id="start-menu">
+      <div data-row="0">&gt; START GAME</div>
+      <div data-row="1">HOW TO PLAY</div>
+      <div data-row="2">CREDITS</div>
+    </div>
+    <div class="foot">WASD move &nbsp;•&nbsp; Shift sneak &nbsp;•&nbsp; Click throw a pebble &nbsp;•&nbsp; P pause &nbsp;•&nbsp; M mute</div>
+  </div>
+</div>
+
+<div class="screen serif" id="screen-howto">
+  <div class="shade"></div>
+  <div class="inner" style="padding-top:60px">
+    <h1 class="small">HOW TO PLAY</h1>
+    <div class="card">
+      You are a fox spirit. Collect all 3 sacred orbs,<br>
+      then slip through the torii gate EXIT unseen.<br><br>
+      <b>WASD / Arrow keys</b> — move<br>
+      <b>Shift</b> — sneak (slower, harder to spot, quieter)<br>
+      <b>Click</b> — throw a pebble; guards investigate the CLANK<br>
+      <b>Bamboo thickets</b> — hide inside, guards cannot see you<br>
+      <b>Rocks</b> — block a guard's line of sight<br><br>
+      <span style="color:#ffd76a">Gold cone: patrolling. &nbsp;Orange '?': suspicious.</span><br>
+      <span style="color:#ff9a3c">Red '!': chasing — run and break line of sight!</span><br>
+      If a guard touches you, you are CAUGHT.<br><br>
+      P — pause &nbsp;&nbsp; M — mute &nbsp;&nbsp; Esc — back to menu
+    </div>
+    <div class="go">PRESS SPACE OR CLICK TO GO BACK</div>
+  </div>
+</div>
+
+<div class="screen serif" id="screen-credits">
+  <div class="shade"></div>
+  <div class="inner" style="padding-top:140px">
+    <h1 class="small">CREDITS</h1>
+    <div class="card">
+      MOSS &amp; SHADOW — an original stealth game<br>
+      Design, code, art and sound: ryukiheun<br>
+      All art built from 3D primitives in code.<br>
+      All sounds made with the WebAudio API.<br>
+      No assets copied.
+    </div>
+    <div class="go">PRESS SPACE OR CLICK TO GO BACK</div>
+  </div>
+</div>
+
+<div class="screen serif" id="screen-levelcomplete">
+  <div class="shade"></div>
+  <div class="inner" style="padding-top:180px">
+    <h1 class="gold">LEVEL COMPLETE</h1>
+    <div class="stats" id="lc-stats">ORBS: 3 / 3 &nbsp;&nbsp; TIME: 2:45 &nbsp;&nbsp; PEBBLES THROWN: 4</div>
+    <div class="go">PRESS SPACE FOR THE NEXT LEVEL</div>
+    <div class="foot">or press Esc for the main menu</div>
+  </div>
+</div>
+
+<div class="screen serif" id="screen-victory">
+  <div class="shade" style="background:rgba(4,10,18,0.22)"></div>
+  <div class="inner" style="padding-top:118px">
+    <h1 class="gold" style="font-size:52px">VICTORY! THE SPIRIT ESCAPES</h1>
+    <div class="stats" style="font-weight:bold">LEVEL COMPLETE</div>
+    <div class="stats" id="vic-stats">ORBS: 3 / 3 &nbsp;&nbsp; TIME: 2:45 &nbsp;&nbsp; PEBBLES THROWN: 4</div>
+    <div class="go">PRESS SPACE TO PLAY AGAIN &nbsp;•&nbsp; Esc FOR THE MAIN MENU</div>
+  </div>
+</div>
+
+<div class="screen serif" id="screen-caught">
+  <div class="shade"></div>
+  <div class="inner" style="padding-top:180px">
+    <h1 class="red">CAUGHT!</h1>
+    <div class="stats">A lantern guardian caught the fox spirit.<br>The garden keeps its secrets — for now.</div>
+    <div class="go">PRESS SPACE TO TRY AGAIN</div>
+    <div class="foot">Tip: hide in bamboo, and throw a pebble to lure a guard away.</div>
+  </div>
+</div>
+
+<div class="screen serif" id="screen-paused">
+  <div class="shade"></div>
+  <div class="inner" style="padding-top:240px">
+    <h1>PAUSED</h1>
+    <div class="stats">Press P to resume &nbsp;•&nbsp; Esc for the main menu</div>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
